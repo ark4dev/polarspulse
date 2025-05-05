@@ -185,9 +185,9 @@ def num_stats(df:pl.DataFrame,
 
     # Prepare empty result for non-numeric columns
     non_num_cols = df_col_types.filter(pl.col("col_class") != "num").get_column("column").to_list()
-    non_num_col_stats = pl.DataFrame({"column": non_num_cols})
+    non_num_col_stats = pl.DataFrame({"column": non_num_cols}).with_columns(pl.col("column").cast(pl.String)) # Ensure correct type for non-numeric columns
 
-    if not num_cols: # No numeric columns found
+    if len(num_cols)==0: # No numeric columns found
         return non_num_col_stats # Return empty stats for non-numeric cols
 
     # Compute stats for numeric columns
@@ -287,7 +287,7 @@ def num_outlier_stats(df:pl.DataFrame,
 
     # Prepare empty results for non-numeric columns / empty input
     non_num_cols = df_col_types.filter(pl.col("col_class") != "num").get_column("column").to_list()
-    non_num_col_set = pl.DataFrame({"column": non_num_cols})
+    non_num_col_set = pl.DataFrame({"column": non_num_cols}).with_columns(pl.col("column").cast(pl.String)) # Ensure correct type for non-numeric columns
     empty_row_stats = pl.DataFrame(schema={"row_index": pl.UInt32}) # Ensure correct schema for empty case
 
     if len(num_cols)==0: # If no numeric columns found, return empty stats and print warning
@@ -475,7 +475,7 @@ def cat_stats(df: pl.DataFrame,
 
     # Prepare empty results for non-categorical columns / empty input
     non_cat_cols = df_col_types.filter(pl.col("col_class") != "cat").get_column("column").to_list()
-    non_cat_col_set = pl.DataFrame({"column": non_cat_cols})
+    non_cat_col_set = pl.DataFrame({"column": non_cat_cols}).with_columns(pl.col("column").cast(pl.String))
     empty_row_stats = pl.DataFrame(schema={"row_index": pl.UInt32})
 
     if len(cat_cols)==0: # No categorical columns found, return empty stats and print warning
@@ -700,7 +700,7 @@ def profile(df:pl.DataFrame,
     # Outlier Stats
     col_outlier = col_empty_df
     row_outlier = row_empty_df
-    if outlier_stats and len(num_cols):
+    if outlier_stats and len(num_cols)>0:
         col_outlier, row_outlier = num_outlier_stats(
             df=df, df_col_types=df_col_types, IQR_multi=IQR_multi
         )
@@ -752,7 +752,7 @@ def profile(df:pl.DataFrame,
             num_col_high_cv_ind=pl.lit(col_profile["high_cv_ind"].max()),
             num_col_high_sparsity_ind=pl.lit(col_profile["high_sparsity_ind"].max())
         )
-    if outlier_stats:
+    if outlier_stats and len(num_cols)>0:
              data_profile = data_profile.with_columns(
                 num_col_outliers_n=pl.lit(col_profile["outliers_ind"].max()),
                 row_outliers_n=pl.lit(row_profile["outliers_ind"].sum()),
