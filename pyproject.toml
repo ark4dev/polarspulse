@@ -6,13 +6,33 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "polarspulse"
 version = "0.1.0" # Should match __version__ in __init__.py
+
 authors = [
   { name="ark4dev", email="akram.alyass@example.com" }, 
 ]
+
 description = "Fast, insightful data profiling for Polars DataFrames."
+
 readme = "README.md"
+readme-content-type = "text/markdown" 
+
 license = { file="LICENSE" } 
+
 requires-python = ">=3.8" # Polars dependency requirement
+
+keywords = [
+    "data profiling",
+    "data analysis",
+    "polars",
+    "data science",
+    "data visualization",
+    "data exploration",
+    "data quality",
+    "data validation",
+    "data insights",
+    "data statistics",
+]
+
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
@@ -28,13 +48,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
+
 # Specify required dependencies
 dependencies = [
-    "polars>=1.26.0", # Use a recent stable version or adjust as needed
+    "polars>=1.26.0"
 ]
-# Optional dependencies (e.g., for development, testing)
-# [project.optional-dependencies]
-# test = ["pytest>=7.0"]
 
 [project.urls]
 "Homepage" = "https://github.com/ark4dev/polarspulse" 

@@ -5,7 +5,7 @@ from typing import Tuple # Added for type hints
 # --- Helper Functions (Keep all functions from the original code here) ---
 
 # Function to compute column types and unique value counts
-def column_type_ident(df: pl.DataFrame, unique_n_threshold:int = 10, unique_prop_threshold:float = 0.01) -> pl.DataFrame:
+def column_type_ident(df: pl.DataFrame, unique_n_threshold:int = 10, unique_prop_threshold:float = None) -> pl.DataFrame:
     """
     Classify columns in a DataFrame as categorical, numerical, time, zero_variance, or other
     based on unique value counts and data types.
@@ -162,7 +162,7 @@ def row_dup_ind(df: pl.DataFrame)-> pl.DataFrame:
 def num_stats(df:pl.DataFrame,
               df_col_types:pl.DataFrame = None,
               unique_n_threshold: int = 10,
-              unique_prop_threshold: float = 0.01,
+              unique_prop_threshold: float = None,
               skew_threshold: float = 3.0,
               kurtosis_threshold: float = 3.0,
               sparsity_threshold: float = 0.5,
@@ -262,7 +262,7 @@ def num_stats(df:pl.DataFrame,
 def num_outlier_stats(df:pl.DataFrame,
                       df_col_types:pl.DataFrame = None,
                       unique_n_threshold: int = 10,
-                      unique_prop_threshold: float = 0.01,
+                      unique_prop_threshold: float = None,
                       IQR_multi:float = 5.0 
                      ) -> Tuple[pl.DataFrame, pl.DataFrame]:
     """
@@ -445,10 +445,10 @@ def num_outlier_stats(df:pl.DataFrame,
 def cat_stats(df: pl.DataFrame,
               df_col_types:pl.DataFrame = None,
               unique_n_threshold: int = 10,
-              unique_prop_threshold: float = 0.01,
+              unique_prop_threshold: float = None,
               exclude_null_level: bool = True,
               rare_level_n_threshold: int = 5,
-              rare_level_prop_threshold: float = 0.01
+              rare_level_prop_threshold: float = None
              ) -> Tuple[pl.DataFrame, pl.DataFrame]:
     """
     Analyzes levels in categorical columns: frequency, Gini index, rare levels.
@@ -543,11 +543,12 @@ def cat_stats(df: pl.DataFrame,
             .filter(rare_level_ind=1)
             .group_by("column")
             .agg(
-                rare_level_ind=(pl.col("rare_level_ind")==pl.lit(1)).sum(),
                 rare_level_n = pl.col("level").len(),
                 rare_level=pl.col("level"),
                 )
-            .with_columns(rare_level_n_threshold_used=pl.lit(rare_level_n_threshold_use).cast(pl.UInt32)) # cast to Int32 for consistency
+            .with_columns(
+                rare_level_ind=(pl.col("rare_level_n")>0).cast(pl.UInt8),
+                rare_level_n_threshold_used=pl.lit(rare_level_n_threshold_use).cast(pl.UInt32)) # cast to Int32 for consistency
         )
 
     # column-level categorical stats
@@ -584,13 +585,13 @@ def profile(df:pl.DataFrame,
 
             # Col Classification thresholds
             unique_n_threshold:int = 10,
-            unique_prop_threshold:float = 0.01,
+            unique_prop_threshold:float = None,
 
             # Toggles for sections
             get_miss_stats:bool = True,
             get_dup_stats:bool = True,
             get_num_stats:bool = True,
-            outlier_stats:bool = True,
+            get_outlier_stats:bool = True,
             get_cat_stats:bool = True,
 
             # Num stats thresholds
@@ -605,7 +606,7 @@ def profile(df:pl.DataFrame,
             # Cat stats thresholds/options
             exclude_null_level: bool = True,
             rare_level_n_threshold: int = 5,
-            rare_level_prop_threshold: float = 0.01
+            rare_level_prop_threshold: float = None
 
             ) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
@@ -625,7 +626,7 @@ def profile(df:pl.DataFrame,
     :param get_miss_stats: Whether to compute missing value statistics.
     :param get_dup_stats: Whether to compute duplicate statistics.
     :param get_num_stats: Whether to compute numeric descriptive statistics.
-    :param outlier_stats: Whether to compute numeric outlier statistics.
+    :param get_outlier_stats: Whether to compute numeric outlier statistics.
     :param get_cat_stats: Whether to compute categorical statistics.
     :param skew_threshold: Absolute threshold to flag high skewness.
     :param kurtosis_threshold: Absolute threshold to flag high kurtosis.
@@ -700,7 +701,7 @@ def profile(df:pl.DataFrame,
     # Outlier Stats
     col_outlier = col_empty_df
     row_outlier = row_empty_df
-    if outlier_stats and len(num_cols)>0:
+    if get_outlier_stats and len(num_cols)>0:
         col_outlier, row_outlier = num_outlier_stats(
             df=df, df_col_types=df_col_types, IQR_multi=IQR_multi
         )
@@ -731,7 +732,10 @@ def profile(df:pl.DataFrame,
     data_profile = pl.DataFrame({
         "number_of_rows":df.height, #f"{df.height} x {df.width}",
         "number_of_cols": df.width,
-        "memory_size_kb": df.estimated_size("kb")})
+        "memory_size_kb": df.estimated_size("kb"),
+        "number_of_classified_num_cols": len(num_cols),
+        "number_of_classified_cat_cols": len(cat_cols),
+        })
     if get_miss_stats:
         data_profile = data_profile.with_columns(
             col_max_miss_prop=col_profile["missing_prop"].max(),
@@ -752,7 +756,7 @@ def profile(df:pl.DataFrame,
             num_col_high_cv_ind=pl.lit(col_profile["high_cv_ind"].max()),
             num_col_high_sparsity_ind=pl.lit(col_profile["high_sparsity_ind"].max())
         )
-    if outlier_stats and len(num_cols)>0:
+    if get_outlier_stats and len(num_cols)>0:
              data_profile = data_profile.with_columns(
                 num_col_outliers_n=pl.lit(col_profile["outliers_ind"].max()),
                 row_outliers_n=pl.lit(row_profile["outliers_ind"].sum()),
@@ -762,26 +766,6 @@ def profile(df:pl.DataFrame,
             cat_col_rare_level_ind=pl.lit(col_profile["rare_level_ind"].sum()>0).cast(pl.UInt32), 
         )
 
-    ## Cast indicators in col, row, and data profile to UInt8 for consistency
-    # data profile
-    indicator_cols = [c for c in data_profile.columns if c.endswith('_ind')]
-    if len(indicator_cols):
-        data_profile = data_profile.with_columns([
-            pl.col(c).cast(pl.UInt8) for c in indicator_cols
-        ])
-    
-    # col profile
-    indicator_cols = [c for c in col_profile.columns if c.endswith('_ind')]
-    if len(indicator_cols)>0:
-        col_profile = col_profile.with_columns([
-            pl.col(c).cast(pl.UInt8) for c in indicator_cols
-        ])
-
-    # row profile
-    indicator_cols = [c for c in row_profile.columns if c.endswith('_ind')]
-    if len(indicator_cols)>0:
-        row_profile = row_profile.with_columns([
-            pl.col(c).cast(pl.UInt8) for c in indicator_cols
-        ])
+    data_profile = data_profile.transpose(include_header=True) # Transpose for better readability
 
     return data_profile, col_profile, row_profile
